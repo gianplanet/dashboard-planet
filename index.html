@@ -177,6 +177,9 @@ tr:hover{background:var(--card-hover)}
 [data-theme="light"] .leaflet-control-zoom a{background:#fff;color:#333;border-color:#ccc}
 @media(max-width:800px){.two-col{grid-template-columns:1fr}.hm-cell{flex:1 1 calc(50% - 4px);max-width:calc(50% - 4px)}.sidebar{position:fixed;left:0;top:0;bottom:0;z-index:200}.sidebar:not(.open){width:0;border:none}.main{margin-left:0}}
 @media(max-width:600px){.kpi-row{grid-template-columns:repeat(2,1fr)}}
+.col-fbtn{padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer;font-family:inherit;transition:all .15s}
+.col-fbtn:hover{background:var(--card-hover);color:var(--text)}
+.col-fbtn.active{background:var(--purple);color:#fff;border-color:var(--purple)}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -376,17 +379,23 @@ tr:hover{background:var(--card-hover)}
 
     <!-- VIEW: Colectas -->
     <div class="view" id="view-colectas">
-      <div id="colectas-kpis" class="kpi-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px"></div>
+      <div id="colectas-kpis" class="kpi-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px"></div>
+      <div id="colectas-filter" style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+        <span style="font-size:12px;color:var(--text2)">Filtrar:</span>
+        <button class="col-fbtn active" onclick="filterColectas('all',this)">Todas</button>
+        <button class="col-fbtn" onclick="filterColectas('am',this)">Mañana (&lt;12h)</button>
+        <button class="col-fbtn" onclick="filterColectas('pm',this)">Tarde (&gt;12h)</button>
+      </div>
       <div style="overflow-x:auto"><table id="tbl-colectas" style="width:100%;font-size:13px">
         <thead><tr>
           <th onclick="sortColectas(0)">Cliente</th>
-          <th onclick="sortColectas(1)" class="ctr">Paq</th>
-          <th onclick="sortColectas(2)" class="ctr">Colecta</th>
-          <th onclick="sortColectas(3)" class="ctr">Llegada Planta</th>
-          <th onclick="sortColectas(4)" class="ctr">Pre 12hs</th>
-          <th onclick="sortColectas(5)" class="ctr">Planta &lt;13h</th>
-          <th onclick="sortColectas(6)" class="ctr">Demora</th>
-          <th class="ctr">Franja</th>
+          <th onclick="sortColectas(1)" class="ctr">Colecta</th>
+          <th onclick="sortColectas(2)" class="ctr">Paq</th>
+          <th onclick="sortColectas(3)" class="ctr">Hora colecta</th>
+          <th onclick="sortColectas(4)" class="ctr">Llegada planta</th>
+          <th onclick="sortColectas(5)" class="ctr">Demora</th>
+          <th class="ctr">Turno</th>
+          <th class="ctr">Franja planta</th>
         </tr></thead>
         <tbody></tbody>
       </table></div>
@@ -446,8 +455,9 @@ function switchView(view,btn){
 }
 
 // ── Colectas ──
-var sortColC=-1, sortColCAsc=true;
+var sortColC=-1, sortColCAsc=true, colectasFilter='all';
 function sortColectas(c){if(sortColC===c)sortColCAsc=!sortColCAsc;else{sortColC=c;sortColCAsc=c===0}renderColectas()}
+function filterColectas(f,btn){colectasFilter=f;document.querySelectorAll('.col-fbtn').forEach(function(b){b.classList.remove('active')});if(btn)btn.classList.add('active');renderColectas()}
 
 function timeToMin(t){if(!t)return 9999;var p=t.split(':');return parseInt(p[0])*60+parseInt(p[1])}
 function colectaDemora(cMin,pMin){
@@ -464,79 +474,104 @@ function colectaFranja(pMin){
   if(m<920)return {txt:'13-15:20',cls:'background:rgba(251,191,36,.15);color:var(--yellow)'};
   return {txt:'> 15:20',cls:'background:rgba(248,113,113,.15);color:var(--red)'};
 }
+function colectaTurno(cMin){
+  if(!cMin)return {txt:'—',cls:''};
+  var m=timeToMin(cMin);
+  if(m<720)return {txt:'Mañana',cls:'background:rgba(74,222,128,.15);color:var(--green)'};
+  return {txt:'Tarde',cls:'background:rgba(251,191,36,.15);color:var(--yellow)'};
+}
 
 function renderColectas(){
   var h=DATA.historico[currentIdx];
   var fechaKey=h.fecha.split('-').reverse().join('-');
-  var rows=DATA.colectas_xlsx?.[fechaKey]||[];
-  if(!rows.length){
+  var rawRows=DATA.colectas_xlsx?.[fechaKey]||[];
+  if(!rawRows.length){
     document.getElementById('colectas-kpis').innerHTML='<div class="kpi-card" style="grid-column:1/-1"><div class="kpi-val" style="font-size:16px;color:var(--text2)">Sin datos de colectas para este día</div></div>';
     document.querySelector('#tbl-colectas tbody').innerHTML='';
     return;
   }
 
-  // Aggregate by client (sum across colecta clusters)
-  var cliMap={};
-  rows.forEach(function(r){
-    if(!cliMap[r.cliente])cliMap[r.cliente]={paq:0,pre12:0,pp13:0,pp1520:0,cMin:'',cMax:'',pMin:'',pMax:'',paq_planta:0};
-    var c=cliMap[r.cliente];
-    c.paq+=r.paquetes;c.pre12+=r.pre12;c.pp13+=r.planta_pre13;c.pp1520+=r.planta_pre1520;c.paq_planta+=r.paq_planta;
-    // Track earliest colecta and earliest/latest planta
-    if(r.colecta_min&&(!c.cMin||r.colecta_min<c.cMin))c.cMin=r.colecta_min;
-    if(r.colecta_max&&(!c.cMax||r.colecta_max>c.cMax))c.cMax=r.colecta_max;
-    if(r.planta_min&&(!c.pMin||r.planta_min<c.pMin))c.pMin=r.planta_min;
-    if(r.planta_max&&(!c.pMax||r.planta_max>c.pMax))c.pMax=r.planta_max;
+  // Each raw row IS an individual colecta — show them all
+  var rows=rawRows.map(function(r){
+    var cMid=r.colecta_min;
+    var turno=colectaTurno(cMid);
+    return {
+      cliente:r.cliente,
+      colNum:r.colecta_num,
+      colTot:r.total_colectas,
+      paq:r.paquetes,
+      cMin:r.colecta_min,cMax:r.colecta_max,
+      pMin:r.planta_min,pMax:r.planta_max,
+      pre12:r.pre12,pp13:r.planta_pre13,
+      turno:turno,
+      isAM:cMid?timeToMin(cMid)<720:false
+    };
   });
-  var cliArr=Object.entries(cliMap).map(function(e){return {cliente:e[0],paq:e[1].paq,pre12:e[1].pre12,pp13:e[1].pp13,cMin:e[1].cMin,cMax:e[1].cMax,pMin:e[1].pMin,pMax:e[1].pMax,paq_planta:e[1].paq_planta}});
+
+  // Filter
+  if(colectasFilter==='am')rows=rows.filter(function(r){return r.isAM});
+  if(colectasFilter==='pm')rows=rows.filter(function(r){return !r.isAM});
 
   // Sort
   if(sortColC>=0){
-    cliArr.sort(function(a,b){
+    rows.sort(function(a,b){
       var va,vb;
       switch(sortColC){
         case 0:va=a.cliente.toLowerCase();vb=b.cliente.toLowerCase();return sortColCAsc?va.localeCompare(vb):vb.localeCompare(va);
-        case 1:va=a.paq;vb=b.paq;break;
-        case 2:va=timeToMin(a.cMin);vb=timeToMin(b.cMin);break;
-        case 3:va=timeToMin(a.pMin);vb=timeToMin(b.pMin);break;
-        case 4:va=a.pre12;vb=b.pre12;break;
-        case 5:va=a.pp13;vb=b.pp13;break;
-        case 6:va=timeToMin(a.pMin)&&timeToMin(a.cMin)?timeToMin(a.pMin)-timeToMin(a.cMin):9999;vb=timeToMin(b.pMin)&&timeToMin(b.cMin)?timeToMin(b.pMin)-timeToMin(b.cMin):9999;break;
+        case 1:va=a.colNum;vb=b.colNum;break;
+        case 2:va=a.paq;vb=b.paq;break;
+        case 3:va=timeToMin(a.cMin);vb=timeToMin(b.cMin);break;
+        case 4:va=timeToMin(a.pMin);vb=timeToMin(b.pMin);break;
+        case 5:va=timeToMin(a.pMin)-timeToMin(a.cMin);vb=timeToMin(b.pMin)-timeToMin(b.cMin);if(isNaN(va)||va<0)va=9999;if(isNaN(vb)||vb<0)vb=9999;break;
         default:va=0;vb=0;
       }
       return sortColCAsc?va-vb:vb-va;
     });
   } else {
-    cliArr.sort(function(a,b){return b.paq-a.paq});
+    // Default: group by client (alphabetical), then colecta_num
+    rows.sort(function(a,b){var c=a.cliente.localeCompare(b.cliente);return c!==0?c:a.colNum-b.colNum});
   }
 
-  // KPIs
-  var totPaq=cliArr.reduce(function(s,c){return s+c.paq},0);
-  var totPre12=cliArr.reduce(function(s,c){return s+c.pre12},0);
-  var totPP13=cliArr.reduce(function(s,c){return s+c.pp13},0);
-  var totPlanta=cliArr.reduce(function(s,c){return s+c.paq_planta},0);
+  // KPIs from unfiltered data
+  var allRows=rawRows;
+  var totPaq=allRows.reduce(function(s,r){return s+r.paquetes},0);
+  var totPre12=allRows.reduce(function(s,r){return s+r.pre12},0);
+  var totPP13=allRows.reduce(function(s,r){return s+r.planta_pre13},0);
+  var totPlanta=allRows.reduce(function(s,r){return s+r.paq_planta},0);
+  var nClientes=new Set(allRows.map(function(r){return r.cliente})).size;
+  var multiColClientes=new Set();
+  allRows.forEach(function(r){if(r.total_colectas>1)multiColClientes.add(r.cliente)});
+  var amColectas=allRows.filter(function(r){return r.colecta_min&&timeToMin(r.colecta_min)<720}).length;
+  var pmColectas=allRows.filter(function(r){return !r.colecta_min||timeToMin(r.colecta_min)>=720}).length;
+
   var kh='';
-  kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--purple)">'+totPaq+'</div><div class="kpi-lbl">Paquetes colectados</div></div>';
-  kh+='<div class="kpi-card"><div class="kpi-val">'+cliArr.length+'</div><div class="kpi-lbl">Clientes</div></div>';
-  kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--green)">'+totPre12+'</div><div class="kpi-lbl">Colectados pre 12hs</div></div>';
-  kh+='<div class="kpi-card"><div class="kpi-val" style="color:'+(totPP13/totPlanta>.5?'var(--green)':'var(--yellow)')+'">'+totPP13+'</div><div class="kpi-lbl">En planta pre 13hs</div></div>';
-  kh+='<div class="kpi-card"><div class="kpi-val">'+(totPlanta?Math.round(totPP13/totPlanta*100):0)+'%</div><div class="kpi-lbl">% planta pre 13hs</div></div>';
+  kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--purple)">'+totPaq+'</div><div class="kpi-lbl">Paquetes</div></div>';
+  kh+='<div class="kpi-card"><div class="kpi-val">'+nClientes+'</div><div class="kpi-lbl">Clientes</div></div>';
+  kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--green)">'+amColectas+'</div><div class="kpi-lbl">Colectas mañana</div></div>';
+  kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--yellow)">'+pmColectas+'</div><div class="kpi-lbl">Colectas tarde</div></div>';
+  kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--accent)">'+multiColClientes.size+'</div><div class="kpi-lbl">Con varias colectas</div></div>';
+  kh+='<div class="kpi-card"><div class="kpi-val">'+(totPlanta?Math.round(totPP13/totPlanta*100):0)+'%</div><div class="kpi-lbl">Planta pre 13h</div></div>';
   document.getElementById('colectas-kpis').innerHTML=kh;
 
-  // Table
+  // Table rows
   var th='';
-  cliArr.forEach(function(c){
-    var colRange=c.cMin===c.cMax?c.cMin:(c.cMin+' - '+c.cMax);
-    var plantaRange=c.pMin?(c.pMin===c.pMax?c.pMin:(c.pMin+' - '+c.pMax)):'—';
-    var demora=colectaDemora(c.cMin,c.pMin);
-    var franja=colectaFranja(c.pMin);
-    th+='<tr>';
-    th+='<td><strong>'+c.cliente+'</strong></td>';
-    th+='<td class="ctr">'+c.paq+'</td>';
+  var prevCli='';
+  rows.forEach(function(r){
+    var colRange=r.cMin===r.cMax?r.cMin:(r.cMin+' - '+r.cMax);
+    var plantaRange=r.pMin?(r.pMin===r.pMax?r.pMin:(r.pMin+' - '+r.pMax)):'—';
+    var demora=colectaDemora(r.cMin,r.pMin);
+    var franja=colectaFranja(r.pMin);
+    var isNewCli=r.cliente!==prevCli;
+    prevCli=r.cliente;
+    var rowStyle=isNewCli?'border-top:2px solid var(--border)':'';
+    th+='<tr style="'+rowStyle+'">';
+    th+='<td>'+(isNewCli?'<strong>'+r.cliente+'</strong>':'<span style="color:var(--text2);padding-left:12px">↳</span>')+'</td>';
+    th+='<td class="ctr"><span style="font-size:11px;color:var(--text2)">'+r.colNum+'/'+r.colTot+'</span></td>';
+    th+='<td class="ctr">'+r.paq+'</td>';
     th+='<td class="ctr">'+colRange+'</td>';
     th+='<td class="ctr">'+plantaRange+'</td>';
-    th+='<td class="ctr">'+(c.pre12>0?'<span style="background:rgba(74,222,128,.15);color:var(--green);padding:2px 6px;border-radius:4px;font-weight:600">'+c.pre12+'</span>':'0')+'</td>';
-    th+='<td class="ctr">'+(c.pp13>0?'<span style="background:rgba(74,222,128,.15);color:var(--green);padding:2px 6px;border-radius:4px;font-weight:600">'+c.pp13+'</span>':'0')+'</td>';
     th+='<td class="ctr">'+demora+'</td>';
+    th+='<td class="ctr"><span style="padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;'+r.turno.cls+'">'+r.turno.txt+'</span></td>';
     th+='<td class="ctr"><span style="padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;'+franja.cls+'">'+franja.txt+'</span></td>';
     th+='</tr>';
   });
