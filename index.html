@@ -541,14 +541,18 @@ function renderColectas(){
   var nClientes=new Set(allRows.map(function(r){return r.cliente})).size;
   var multiColClientes=new Set();
   allRows.forEach(function(r){if(r.total_colectas>1)multiColClientes.add(r.cliente)});
-  var amColectas=allRows.filter(function(r){return r.colecta_min&&timeToMin(r.colecta_min)<720}).length;
-  var pmColectas=allRows.filter(function(r){return !r.colecta_min||timeToMin(r.colecta_min)>=720}).length;
+  var amRows=allRows.filter(function(r){return r.colecta_min&&timeToMin(r.colecta_min)<720});
+  var pmRows=allRows.filter(function(r){return !r.colecta_min||timeToMin(r.colecta_min)>=720});
+  var amColectas=amRows.length;
+  var pmColectas=pmRows.length;
+  var amPaq=amRows.reduce(function(s,r){return s+r.paquetes},0);
+  var pmPaq=pmRows.reduce(function(s,r){return s+r.paquetes},0);
 
   var kh='';
-  kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--purple)">'+totPaq+'</div><div class="kpi-lbl">Paquetes</div></div>';
+  kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--purple)">'+totPaq+'</div><div class="kpi-lbl">Paquetes total</div></div>';
+  kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--green)">'+amPaq+'</div><div class="kpi-lbl">Paq mañana ('+amColectas+' col)</div></div>';
+  kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--yellow)">'+pmPaq+'</div><div class="kpi-lbl">Paq tarde ('+pmColectas+' col)</div></div>';
   kh+='<div class="kpi-card"><div class="kpi-val">'+nClientes+'</div><div class="kpi-lbl">Clientes</div></div>';
-  kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--green)">'+amColectas+'</div><div class="kpi-lbl">Colectas mañana</div></div>';
-  kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--yellow)">'+pmColectas+'</div><div class="kpi-lbl">Colectas tarde</div></div>';
   kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--accent)">'+multiColClientes.size+'</div><div class="kpi-lbl">Con varias colectas</div></div>';
   kh+='<div class="kpi-card"><div class="kpi-val">'+(totPlanta?Math.round(totPP13/totPlanta*100):0)+'%</div><div class="kpi-lbl">Planta pre 13h</div></div>';
   document.getElementById('colectas-kpis').innerHTML=kh;
