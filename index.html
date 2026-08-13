@@ -581,14 +581,17 @@ function renderColectas(){
   var nClientes=new Set(allRows.map(function(r){return r.cliente})).size;
   var multiColClientes=new Set();
   allRows.forEach(function(r){if(r.total_colectas>1)multiColClientes.add(r.cliente)});
-  var amRows=allRows.filter(function(r){return r.colecta_min&&timeToMin(r.colecta_min)<720});
-  var pmRows=allRows.filter(function(r){return !r.colecta_min||timeToMin(r.colecta_min)>=720});
+  // AM/PM split by PLANTA time (when packages arrive at plant)
+  var amRows=allRows.filter(function(r){return r.planta_min&&timeToMin(r.planta_min)<780}); // <13:00 en planta
+  var pmRows=allRows.filter(function(r){return !r.planta_min||timeToMin(r.planta_min)>=780});
+  var sinPlanta=allRows.filter(function(r){return !r.planta_min});
   var amColectas=amRows.length;
   var pmColectas=pmRows.length;
   var amPaq=amRows.reduce(function(s,r){return s+r.paquetes},0);
   var pmPaq=pmRows.reduce(function(s,r){return s+r.paquetes},0);
+  var sinPlantaPaq=sinPlanta.reduce(function(s,r){return s+r.paquetes},0);
 
-  // Zone breakdown for AM/PM
+  // Zone breakdown for AM/PM (by planta)
   var zoneColors={CABA:'#7c5cfc',NORTE:'#22c55e',SUR:'#ef4444',OESTE:'#f59e0b','Sin Zona':'#6b7280'};
   var amByZone={},pmByZone={};
   amRows.forEach(function(r){var z=r.zona||'Sin Zona';amByZone[z]=(amByZone[z]||0)+r.paquetes});
@@ -608,39 +611,53 @@ function renderColectas(){
 
   var kh='';
   kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--purple)">'+totPaq+'</div><div class="kpi-lbl">Paquetes total</div></div>';
-  kh+='<div class="kpi-card" style="grid-column:span 2"><div class="kpi-val" style="color:var(--green)">'+amPaq+' <span style="font-size:14px;color:var(--text2)">paq mañana ('+amColectas+' col)</span></div>'+zoneBar(amByZone,amPaq,'Zonas mañana')+'</div>';
-  kh+='<div class="kpi-card" style="grid-column:span 2"><div class="kpi-val" style="color:var(--yellow)">'+pmPaq+' <span style="font-size:14px;color:var(--text2)">paq tarde ('+pmColectas+' col)</span></div>'+zoneBar(pmByZone,pmPaq,'Zonas tarde')+'</div>';
-  kh+='<div class="kpi-card"><div class="kpi-val">'+nClientes+'</div><div class="kpi-lbl">Clientes</div></div>';
+  kh+='<div class="kpi-card" style="grid-column:span 2"><div class="kpi-val" style="color:var(--green)">'+amPaq+' <span style="font-size:14px;color:var(--text2)">paq en planta &lt;13h ('+amColectas+' col)</span></div>'+zoneBar(amByZone,amPaq,'Zonas en planta mañana')+'</div>';
+  kh+='<div class="kpi-card" style="grid-column:span 2"><div class="kpi-val" style="color:var(--yellow)">'+pmPaq+' <span style="font-size:14px;color:var(--text2)">paq en planta &gt;13h ('+pmColectas+' col)</span></div>'+zoneBar(pmByZone,pmPaq,'Zonas en planta tarde')+'</div>';
+  kh+='<div class="kpi-card"><div class="kpi-val">'+nClientes+'</div><div class="kpi-lbl">Clientes</div>'+(sinPlantaPaq?'<div style="font-size:10px;color:var(--red);margin-top:2px">'+sinPlantaPaq+' paq sin dato planta</div>':'')+'</div>';
   document.getElementById('colectas-kpis').innerHTML=kh;
 
-  // Zone detail summary cards
+  // Zone detail summary cards — based on PLANTA time
   var detZones={};
   allRows.forEach(function(r){
     var zd=r.zona_det||r.zona||'Sin Zona';
-    if(!detZones[zd])detZones[zd]={paq:0,am:0,pm:0,cols:0,clientes:new Set(),firstCol:'99:99'};
+    if(!detZones[zd])detZones[zd]={paq:0,enPlanta:0,pre13:0,pre1520:0,cols:0,clientes:new Set(),firstPlanta:'99:99',sinPlanta:0};
     detZones[zd].paq+=r.paquetes;
     detZones[zd].cols++;
     detZones[zd].clientes.add(r.cliente);
-    if(r.colecta_min&&timeToMin(r.colecta_min)<720)detZones[zd].am+=r.paquetes;
-    else detZones[zd].pm+=r.paquetes;
-    if(r.colecta_min&&r.colecta_min<detZones[zd].firstCol)detZones[zd].firstCol=r.colecta_min;
+    detZones[zd].pre13+=r.planta_pre13||0;
+    detZones[zd].pre1520+=r.planta_pre1520||0;
+    if(r.planta_min){
+      detZones[zd].enPlanta+=r.paq_planta||r.paquetes;
+      if(r.planta_min<detZones[zd].firstPlanta)detZones[zd].firstPlanta=r.planta_min;
+    } else {
+      detZones[zd].sinPlanta+=r.paquetes;
+    }
   });
   var detZoneArr=Object.entries(detZones).sort(function(a,b){return a[0].localeCompare(b[0])});
   var macroColors={CABA:'#7c5cfc',NORTE:'#22c55e',SUR:'#ef4444',OESTE:'#f59e0b'};
-  var zh='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">';
+  var zh='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">';
   detZoneArr.forEach(function(e){
     var z=e[0],d=e[1];
     var macro=z.split(' ')[0];
     var mc=macroColors[macro]||'#6b7280';
-    var amPct=d.paq?Math.round(d.am/d.paq*100):0;
+    var pctPre13=d.paq?Math.round(d.pre13/d.paq*100):0;
     zh+='<div style="background:var(--card);border-radius:10px;padding:10px 12px;border-left:4px solid '+mc+';box-shadow:0 1px 3px rgba(0,0,0,0.06);cursor:pointer" onclick="document.getElementById(\'colectas-zona-filter\').value=\''+z+'\';filterColectasZona(document.getElementById(\'colectas-zona-filter\'))">';
     zh+='<div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:4px">'+z+'</div>';
     zh+='<div style="font-size:22px;font-weight:700;color:'+mc+'">'+d.paq+'<span style="font-size:12px;color:var(--text2);font-weight:400"> paq</span></div>';
-    zh+='<div style="display:flex;gap:8px;font-size:11px;color:var(--text2);margin-top:3px">';
-    zh+='<span>'+d.cols+' col</span><span>·</span><span>'+d.clientes.size+' cli</span><span>·</span>';
-    zh+='<span style="color:var(--green)">AM '+d.am+'</span><span style="color:var(--yellow)">PM '+d.pm+'</span>';
+    // Planta arrival bars
+    zh+='<div style="display:flex;height:14px;border-radius:3px;overflow:hidden;margin-top:4px;font-size:9px;font-weight:600;color:#fff">';
+    if(d.pre13)zh+='<div style="width:'+pctPre13+'%;background:var(--green);display:flex;align-items:center;justify-content:center;min-width:20px" title="En planta <13h">'+d.pre13+'</div>';
+    if(d.paq-d.pre13-d.sinPlanta>0){var mid=d.paq-d.pre13-d.sinPlanta;zh+='<div style="width:'+Math.round(mid/d.paq*100)+'%;background:var(--yellow);display:flex;align-items:center;justify-content:center;min-width:20px" title="En planta ≥13h">'+mid+'</div>';}
+    if(d.sinPlanta)zh+='<div style="width:'+Math.round(d.sinPlanta/d.paq*100)+'%;background:var(--red);display:flex;align-items:center;justify-content:center;min-width:20px;opacity:0.6" title="Sin dato planta">'+d.sinPlanta+'</div>';
     zh+='</div>';
-    if(d.firstCol!=='99:99')zh+='<div style="font-size:10px;color:var(--text3);margin-top:2px">1° colecta: '+d.firstCol+'</div>';
+    zh+='<div style="display:flex;gap:6px;font-size:10px;color:var(--text2);margin-top:3px">';
+    zh+='<span>'+d.cols+' col</span><span>·</span><span>'+d.clientes.size+' cli</span>';
+    zh+='</div>';
+    zh+='<div style="display:flex;gap:8px;font-size:10px;margin-top:2px">';
+    zh+='<span style="color:var(--green)">Planta &lt;13h: '+d.pre13+'</span>';
+    zh+='<span style="color:var(--yellow)">&lt;15:20: '+d.pre1520+'</span>';
+    zh+='</div>';
+    if(d.firstPlanta!=='99:99')zh+='<div style="font-size:10px;color:var(--text3);margin-top:2px">1° en planta: '+d.firstPlanta+'</div>';
     zh+='</div>';
   });
   zh+='</div>';
