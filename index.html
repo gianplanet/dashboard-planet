@@ -581,28 +581,28 @@ function renderColectas(){
   var nClientes=new Set(allRows.map(function(r){return r.cliente})).size;
   var multiColClientes=new Set();
   allRows.forEach(function(r){if(r.total_colectas>1)multiColClientes.add(r.cliente)});
-  // AM/PM split by PLANTA time (when packages arrive at plant)
-  var amRows=allRows.filter(function(r){return r.planta_min&&timeToMin(r.planta_min)<780}); // <13:00 en planta
-  var pmRows=allRows.filter(function(r){return !r.planta_min||timeToMin(r.planta_min)>=780});
-  var sinPlanta=allRows.filter(function(r){return !r.planta_min});
-  var amColectas=amRows.length;
-  var pmColectas=pmRows.length;
-  var amPaq=amRows.reduce(function(s,r){return s+r.paquetes},0);
-  var pmPaq=pmRows.reduce(function(s,r){return s+r.paquetes},0);
-  var sinPlantaPaq=sinPlanta.reduce(function(s,r){return s+r.paquetes},0);
-
-  // Zone breakdown for AM/PM (by planta)
+  // Planta-based totals (consistent across KPIs and zone cards)
   var zoneColors={CABA:'#7c5cfc',NORTE:'#22c55e',SUR:'#ef4444',OESTE:'#f59e0b','Sin Zona':'#6b7280'};
-  var amByZone={},pmByZone={};
-  amRows.forEach(function(r){var z=r.zona||'Sin Zona';amByZone[z]=(amByZone[z]||0)+r.paquetes});
-  pmRows.forEach(function(r){var z=r.zona||'Sin Zona';pmByZone[z]=(pmByZone[z]||0)+r.paquetes});
+  var totPre13=allRows.reduce(function(s,r){return s+(r.planta_pre13||0)},0);
+  var totPre1520=allRows.reduce(function(s,r){return s+(r.planta_pre1520||0)},0);
+  var totConPlanta=allRows.reduce(function(s,r){return s+(r.paq_planta||0)},0);
+  var totSinPlanta=totPaq-totConPlanta;
+  var totPost1520=totConPlanta-totPre1520;
+
+  // Zone breakdown for planta <13h / >=13h
+  var pre13ByZone={},post13ByZone={};
+  allRows.forEach(function(r){
+    var z=r.zona||'Sin Zona';
+    pre13ByZone[z]=(pre13ByZone[z]||0)+(r.planta_pre13||0);
+    post13ByZone[z]=(post13ByZone[z]||0)+((r.paq_planta||0)-(r.planta_pre13||0));
+  });
   function zoneBar(byZone,total,label){
     if(!total)return '';
     var h='<div style="margin-top:2px;font-size:11px;color:var(--text2)">'+label+'</div>';
     h+='<div style="display:flex;height:18px;border-radius:4px;overflow:hidden;font-size:10px;font-weight:600;color:#fff;margin-top:2px">';
     ['CABA','NORTE','SUR','OESTE','Sin Zona'].forEach(function(z){
-      var v=byZone[z]||0;if(!v)return;
-      var pct=Math.round(v/total*100);
+      var v=byZone[z]||0;if(!v||v<0)return;
+      var pct=Math.max(Math.round(v/total*100),1);
       h+='<div style="width:'+pct+'%;background:'+zoneColors[z]+';display:flex;align-items:center;justify-content:center;min-width:28px" title="'+z+': '+v+' paq">'+z.slice(0,3)+' '+v+'</div>';
     });
     h+='</div>';
@@ -611,9 +611,9 @@ function renderColectas(){
 
   var kh='';
   kh+='<div class="kpi-card"><div class="kpi-val" style="color:var(--purple)">'+totPaq+'</div><div class="kpi-lbl">Paquetes total</div></div>';
-  kh+='<div class="kpi-card" style="grid-column:span 2"><div class="kpi-val" style="color:var(--green)">'+amPaq+' <span style="font-size:14px;color:var(--text2)">paq en planta &lt;13h ('+amColectas+' col)</span></div>'+zoneBar(amByZone,amPaq,'Zonas en planta mañana')+'</div>';
-  kh+='<div class="kpi-card" style="grid-column:span 2"><div class="kpi-val" style="color:var(--yellow)">'+pmPaq+' <span style="font-size:14px;color:var(--text2)">paq en planta &gt;13h ('+pmColectas+' col)</span></div>'+zoneBar(pmByZone,pmPaq,'Zonas en planta tarde')+'</div>';
-  kh+='<div class="kpi-card"><div class="kpi-val">'+nClientes+'</div><div class="kpi-lbl">Clientes</div>'+(sinPlantaPaq?'<div style="font-size:10px;color:var(--red);margin-top:2px">'+sinPlantaPaq+' paq sin dato planta</div>':'')+'</div>';
+  kh+='<div class="kpi-card" style="grid-column:span 2"><div class="kpi-val" style="color:var(--green)">'+totPre13+' <span style="font-size:14px;color:var(--text2)">paq en planta &lt;13h</span></div>'+zoneBar(pre13ByZone,totPre13,'Por zona')+'</div>';
+  kh+='<div class="kpi-card" style="grid-column:span 2"><div class="kpi-val" style="color:var(--yellow)">'+totPre1520+' <span style="font-size:14px;color:var(--text2)">paq en planta &lt;15:20</span></div><div style="font-size:11px;color:var(--text2);margin-top:2px">Post 15:20: '+(totPost1520>0?totPost1520:0)+(totSinPlanta?' · Sin dato: '+totSinPlanta:'')+'</div></div>';
+  kh+='<div class="kpi-card"><div class="kpi-val">'+nClientes+'</div><div class="kpi-lbl">Clientes</div></div>';
   document.getElementById('colectas-kpis').innerHTML=kh;
 
   // Zone detail summary cards — based on PLANTA time
