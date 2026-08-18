@@ -941,16 +941,16 @@ function loadDay(idx){
 
   // Welcome donuts
   var wd=document.getElementById('wc-donuts');
-  if(wd&&h){
-    var entregados=totalPaq-h.no_entregados;
-    var noEnt=h.no_entregados||0;
+  if(wd&&h&&detail){
+    var entregados=detail.reduce(function(s,c){return s+c.entregados},0);
+    var noEnt=totalPaq-entregados;
     var pctEnt=totalPaq?Math.round(entregados/totalPaq*100):0;
     var efPct=Math.round((h.eficiencia||0)*100*10)/10;
-    var efFail=totalPaq?totalPaq-Math.round(totalPaq*h.eficiencia):0;
-    var efOk=totalPaq-efFail;
-    var post21Count=h.post21||0;
+    var efOk=detail.reduce(function(s,c){return s+(c.eficiencia>=1?c.paquetes:Math.round(c.paquetes*c.eficiencia))},0);
+    var efFail=totalPaq-efOk;
+    var post21Pct=Math.round((h.pct_post21||0)*1000)/10;
+    var post21Count=Math.round(totalPaq*(h.pct_post21||0));
     var pre21Count=totalPaq-post21Count;
-    var post21Pct=totalPaq?Math.round(post21Count/totalPaq*1000)/10:0;
     function donutSvg(segs,centerVal,centerLabel,sz){
       var r=42,circ=2*Math.PI*r,sw=13;
       var s='<svg viewBox="0 0 120 120" width="'+sz+'" height="'+sz+'">';
@@ -1133,7 +1133,7 @@ function toggleDonutDetail(type){
     if(noEnt>0){
       ph+='<div style="margin-top:10px;font-size:12px;color:var(--text3)">Top choferes con no entregados:</div>';
       var byChofer={};
-      detail.forEach(function(c){if(c.no_ent>0)byChofer[c.chofer]=(byChofer[c.chofer]||0)+c.no_ent});
+      detail.forEach(function(c){var ne=c.paquetes-c.entregados;if(ne>0)byChofer[c.chofer]=(byChofer[c.chofer]||0)+ne});
       var sorted=Object.entries(byChofer).sort(function(a,b){return b[1]-a[1]}).slice(0,5);
       sorted.forEach(function(e){
         ph+='<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid var(--border)"><span style="color:var(--text)">'+e[0]+'</span><span style="color:var(--red);font-weight:600">'+e[1]+'</span></div>';
@@ -1142,9 +1142,9 @@ function toggleDonutDetail(type){
   } else if(type==='eficiencia'){
     var efPct=Math.round((h.eficiencia||0)*1000)/10;
     ph+='<div style="font-weight:500;font-size:14px;margin-bottom:10px;color:var(--text)">Eficiencia por chofer</div>';
-    var chofEf=detail.filter(function(c){return c.paquetes>=5}).sort(function(a,b){return a.efectividad-b.efectividad}).slice(0,8);
+    var chofEf=detail.filter(function(c){return c.paquetes>=5}).sort(function(a,b){return a.eficiencia-b.eficiencia}).slice(0,8);
     chofEf.forEach(function(c){
-      var pct=Math.round(c.efectividad*1000)/10;
+      var pct=Math.round(c.eficiencia*1000)/10;
       var color=pct>=85?'var(--green)':pct>=70?'var(--accent)':'var(--red)';
       ph+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">';
       ph+='<span style="flex:1;font-size:12px;color:var(--text)">'+c.chofer+'</span>';
@@ -1155,7 +1155,7 @@ function toggleDonutDetail(type){
   } else if(type==='post21'){
     var post21Count=h.post21||0;
     ph+='<div style="font-weight:500;font-size:14px;margin-bottom:10px;color:var(--text)">Choferes post 21hs</div>';
-    var chofPost=detail.filter(function(c){return c.hora_fin>='21:00'}).sort(function(a,b){return b.hora_fin>a.hora_fin?1:b.hora_fin<a.hora_fin?-1:0});
+    var chofPost=detail.filter(function(c){return c.hora_fin&&c.hora_fin>='21:00'}).sort(function(a,b){return b.hora_fin>a.hora_fin?1:b.hora_fin<a.hora_fin?-1:0});
     if(chofPost.length===0){ph+='<div style="font-size:12px;color:var(--text3)">Ningún chofer terminó después de las 21hs</div>';}
     else{
       chofPost.slice(0,8).forEach(function(c){
