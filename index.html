@@ -495,6 +495,7 @@ function switchView(view,btn){
   if(view==='kpis'){
     if(!trendChart){setTimeout(buildTrend,50)}
     else{setTimeout(function(){trendChart.resize()},50)}
+    setTimeout(function(){var h=DATA.historico[currentIdx];var p=h.fecha.split('-');renderPanza(p[2]+'-'+p[1]+'-'+p[0])},100);
   }
   if(view==='tendencia'){setTimeout(function(){buildTrendFull()},50)}
   if(view==='colectas'){renderColectas()}
