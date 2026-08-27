@@ -476,7 +476,7 @@ function toggleTheme(){
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open')}
 
 var viewTitles={inicio:'Dashboard de flota',kpis:'KPIs del dia',tabla:'Detalle por chofer',duracion:'Duración de rutas',mapa:'Mapa y no entregados',post21:'Paquetes post 21hs',tendencia:'Tendencia semanal',colectas:'Colectas del día',reporte:'Reporte operativo'};
-var SALIDA_TEMPRANA=['alan branchetti','julian ruiz','marcelo erramundegui','kevin flores','lucas roa'];
+var SALIDA_TEMPRANA=['alan branchetti','julian ruiz','marcelo erramundegui','kevin flores','lucas roa','mauro ferreyra','federico prato','david maciel','christian fernandez'];
 function isSalidaTemprana(d){return SALIDA_TEMPRANA.indexOf((d.chofer_norm||d.chofer.toLowerCase().trim()))>=0;}
 var currentView='inicio';
 
