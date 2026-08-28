@@ -1084,10 +1084,12 @@ function renderTable(detail){
         const sec=r.secuencia===null?'<span style="color:var(--text3)">N/D</span>':colorVal(r.secuencia,0.97,0.85);
         const eff=colorVal(r.eficiencia,0.95,0.85);
         const noEnt=r.paquetes-r.entregados;
-        const noEntHtml=noEnt>0?'<span class="red">'+noEnt+'</span>':'<span class="green">0</span>';
+        const rid='st-noent-'+r.chofer.replace(/[^a-zA-Z0-9]/g,'_');
+        const noEntHtml=noEnt>0?'<span class="red" style="cursor:pointer;text-decoration:underline" onclick="toggleNoEntDetail(\''+rid+'\',\''+r.chofer.replace(/'/g,"\\'")+'\')" title="Ver direcciones">'+noEnt+'</span>':'<span class="green">0</span>';
         const compl=r.ruta_completa?'\u2713':'<span class="red">\u2717</span>';
         const zona=r.zona_det||r.zona_macro||'—';
         sh+='<tr><td><strong>'+r.chofer+'</strong></td><td class="ctr" style="font-size:0.8em;color:var(--accent)">'+zona+'</td><td class="num">'+r.paquetes+'</td><td class="ctr">'+(r.primer_evento||'—')+'</td><td class="ctr">'+(r.hora_fin||'—')+'</td><td class="ctr">'+sec+'</td><td class="ctr">'+eff+'</td><td class="ctr">'+noEntHtml+'</td><td class="ctr">'+compl+'</td></tr>';
+        sh+='<tr id="'+rid+'" style="display:none"><td colspan="9" style="padding:0 0 0 1.5em;border-top:none"><div class="noent-detail"></div></td></tr>';
       });
       stBody.innerHTML=sh;
     }
