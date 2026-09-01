@@ -338,6 +338,13 @@ tbody tr{animation:rowFadeIn 0.3s both}
           <th>Chofer</th><th class="ctr">Zona</th><th class="num">Paq</th><th class="ctr">Inicio</th><th class="ctr">Fin</th><th class="ctr">Sec%</th><th class="ctr">Eff%</th><th class="ctr red">NoEnt</th><th class="ctr">OK</th>
         </tr></thead><tbody></tbody></table></div>
       </div>
+      <div id="motos-fijas-wrap" style="margin-top:18px;display:none">
+        <div style="font-size:0.85em;font-weight:600;color:#f59e0b;margin-bottom:6px">🏍️ Rendimiento Motos Fijas</div>
+        <div id="motos-fijas-total" style="font-size:0.8em;color:var(--text2);margin-bottom:6px"></div>
+        <div style="overflow-x:auto"><table id="tbl-motos-fijas"><thead><tr>
+          <th>Chofer</th><th class="ctr">Zona</th><th class="num">Paq</th><th class="num">$/paq</th><th class="num">Facturación</th>
+        </tr></thead><tbody></tbody></table></div>
+      </div>
     </div>
 
     <!-- VIEW: Duración -->
@@ -478,6 +485,10 @@ function toggleSidebar(){document.getElementById('sidebar').classList.toggle('op
 var viewTitles={inicio:'Dashboard de flota',kpis:'KPIs del dia',tabla:'Detalle por chofer',duracion:'Duración de rutas',mapa:'Mapa y no entregados',post21:'Paquetes post 21hs',tendencia:'Tendencia semanal',colectas:'Colectas del día',reporte:'Reporte operativo'};
 var SALIDA_TEMPRANA=['alan branchetti','julian ruiz','marcelo erramundegui','kevin flores','lucas roa','mauro ferreyra','federico prato','david maciel','christian fernandez'];
 function isSalidaTemprana(d){return SALIDA_TEMPRANA.indexOf((d.chofer_norm||d.chofer.toLowerCase().trim()))>=0;}
+var MOTOS_FIJAS=['christian fernandez','alan branchetti','david maciel'];
+var TARIFARIO={1:1920,2:2720,3:3040,4:3840,5:5936};
+function isMotofija(d){return MOTOS_FIJAS.indexOf((d.chofer_norm||d.chofer.toLowerCase().trim()))>=0;}
+function getZonaNum(zonaDet){var m=(zonaDet||'').match(/Z(\d)/);return m?parseInt(m[1]):1;}
 var currentView='inicio';
 
 function switchView(view,btn){
@@ -1024,6 +1035,7 @@ function loadDay(idx){
   renderPost21();
   renderClientes();
   renderPanza(fechaKey);
+  renderMotosFijas(detail);
   renderOrigen();
   if(currentView==='colectas')renderColectas();
 }
@@ -1550,6 +1562,32 @@ function renderPanza(fechaKey){
   });
   const infoEl=canvas.parentElement.parentElement.querySelector('.panza-info');
   if(infoEl) infoEl.innerHTML='Total: <strong>'+total+'</strong> entregas · Pico: <strong>'+peak+':00hs</strong>';
+}
+function renderMotosFijas(detail){
+  var wrap=document.getElementById('motos-fijas-wrap');
+  var tbody=document.querySelector('#tbl-motos-fijas tbody');
+  var totalEl=document.getElementById('motos-fijas-total');
+  if(!wrap||!tbody)return;
+  if(!detail){wrap.style.display='none';return}
+  var mf=detail.filter(isMotofija);
+  if(mf.length===0){wrap.style.display='none';return}
+  wrap.style.display='block';
+  var html='';var grandTotal=0;
+  mf.sort(function(a,b){
+    var fa=(a.paquetes||0)*(TARIFARIO[getZonaNum(a.zona_det)]||1920);
+    var fb=(b.paquetes||0)*(TARIFARIO[getZonaNum(b.zona_det)]||1920);
+    return fb-fa;
+  });
+  mf.forEach(function(r){
+    var zn=getZonaNum(r.zona_det);
+    var tarifa=TARIFARIO[zn]||1920;
+    var fact=r.paquetes*tarifa;
+    grandTotal+=fact;
+    var zona=r.zona_det||r.zona_macro||'—';
+    html+='<tr><td><strong>'+r.chofer+'</strong></td><td class="ctr" style="font-size:0.8em;color:var(--accent)">'+zona+'</td><td class="num">'+r.paquetes+'</td><td class="num">$'+tarifa.toLocaleString()+'</td><td class="num" style="color:#f59e0b;font-weight:600">$'+fact.toLocaleString()+'</td></tr>';
+  });
+  tbody.innerHTML=html;
+  if(totalEl) totalEl.innerHTML='Total día: <strong style="color:#f59e0b">$'+grandTotal.toLocaleString()+'</strong>';
 }
 function renderOrigen(){
   const h=DATA.historico[currentIdx];
