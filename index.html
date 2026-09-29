@@ -82,7 +82,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
 .sidebar.open .sb-foot{flex-direction:row;padding:8px 14px;justify-content:flex-start;flex-wrap:wrap;gap:5px}
 .sb-fbtn{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text3);font-size:12px;background:transparent;font-family:inherit;transition:all 0.15s}
 .sb-fbtn:hover{border-color:var(--text3);color:var(--text)}
-.sidebar:not(.open) .sb-fbtn.sb-zoom{display:none}
+.sidebar:not(.open) .sb-foot{gap:4px}
 
 /* ─── Main ─── */
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
@@ -237,6 +237,8 @@ input.rc-in[type=text]{width:100%}
 .rc-g{color:var(--green)}.rc-y{color:var(--yellow)}.rc-r{color:var(--red)}
 #rc-chart svg text{fill:var(--text2);font-size:11px;font-family:inherit}
 .rc-empty{color:var(--text2);text-align:center;padding:40px}
+.rc-money{color:#f59e0b;font-weight:600}
+.rc-zb{display:inline-block;background:var(--accent-dim);color:var(--accent);border-radius:4px;padding:1px 6px;font-size:11px;margin:1px 2px 1px 0;white-space:nowrap}
 @media(max-width:900px){.rc-filters{grid-template-columns:1fr}.rc-kpis{grid-template-columns:repeat(2,1fr)}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js"></script>
@@ -541,6 +543,10 @@ input.rc-in[type=text]{width:100%}
       <div class="section">
         <div class="rc-lbl">Comparativa del per&iacute;odo <span class="rc-mut" style="text-transform:none;letter-spacing:0;font-weight:400">toc&aacute; un chofer para ver su detalle d&iacute;a por d&iacute;a</span></div>
         <div style="overflow-x:auto"><table class="rc-tbl" id="rc-tbl"></table></div>
+      </div>
+      <div class="section" id="rc-mf-card" style="display:none">
+        <div class="rc-lbl">&#127949;&#65039; Motos fijas &middot; zonas y facturaci&oacute;n <span class="rc-mut" id="rc-mf-total" style="text-transform:none;letter-spacing:0;font-weight:400"></span></div>
+        <div style="overflow-x:auto"><table class="rc-tbl" id="rc-mf"></table></div>
       </div>
       <div class="section" id="rc-det-card" style="display:none">
         <div class="rc-lbl" id="rc-det-title"></div>
@@ -1841,6 +1847,7 @@ function rcInit(){
     var o=drv[r.chofer]||(drv[r.chofer]={name:r.chofer,seg:r.segmento,days:{}});
     o.days[d.iso]={pq:r.paquetes||0,en:r.entregados||0,ef:r.eficiencia,sq:r.secuencia,hf:r.hora_fin,
       p21:r.visitas_post_corte||0,post:!!r.termino_post_corte,dv:r.desvio_min,rc:r.ruta_completa};
+    if(isMotofija(r)){o.mf=true;o.days[d.iso].mf=rcMfDia(r,d.key)}
   })});
   var DAYS=days.map(function(d){return d.iso});
   var names=Object.keys(drv).sort();
@@ -1859,6 +1866,35 @@ function rcInit(){
   document.querySelectorAll('#rc-mtabs .rc-btn').forEach(function(b){b.onclick=function(){
     rc.m=b.dataset.m;document.querySelectorAll('#rc-mtabs .rc-btn').forEach(function(x){x.classList.toggle('on',x===b)});rcChart()}});
   window.addEventListener('resize',function(){if(currentView==='rendimiento')rcChart()});
+}
+// Zonas y facturación de una moto fija en un día (misma lógica que renderMotosFijas)
+function rcMfDia(r,fechaKey){
+  var cn=r.chofer_norm||r.chofer.toLowerCase().trim();
+  var zonas=(DATA.motos_fijas&&DATA.motos_fijas[fechaKey]||{})[cn],z={},fact=0;
+  if(zonas&&Object.keys(zonas).length){Object.keys(zonas).forEach(function(k){z[k]=zonas[k];fact+=zonas[k]*(TARIFARIO[parseInt(k)]||1920)})}
+  else{var zn=getZonaNum(r.zona_det);z[zn]=r.paquetes||0;fact=(r.paquetes||0)*(TARIFARIO[zn]||1920)}
+  return {z:z,fact:fact};
+}
+function rcZonasTxt(z){return Object.keys(z).sort(function(a,b){return a-b}).filter(function(k){return z[k]>0}).map(function(k){return z[k]+'&times;Z'+k}).join(' + ')||'–'}
+function rcMoney(v){return '$'+Math.round(v).toLocaleString('es-AR')}
+function rcMotos(){
+  var card=document.getElementById('rc-mf-card');
+  var mfs=rc.sel.filter(function(n){return rc.drv[n].mf});
+  if(!mfs.length){card.style.display='none';return}
+  card.style.display='';
+  var total=0;
+  var rows=mfs.map(function(n){
+    var ds=rcDays(n),z={},fact=0,pq=0;
+    ds.forEach(function(v){if(!v.mf)return;fact+=v.mf.fact;pq+=v.pq;Object.keys(v.mf.z).forEach(function(k){z[k]=(z[k]||0)+v.mf.z[k]})});
+    total+=fact;
+    var zt=Object.keys(z).reduce(function(a,k){return a+z[k]},0);
+    var reparto=Object.keys(z).sort(function(a,b){return a-b}).filter(function(k){return z[k]>0}).map(function(k){
+      return '<span class="rc-zb"><b>Z'+k+'</b> '+Math.round(z[k]/zt*100)+'%</span>'}).join(' ');
+    return '<tr class="clk'+(rc.det===n?' sel':'')+'" onclick="rcShowDet('+rc.names.indexOf(n)+')"><td><span class="rc-chip" style="border:none;padding:0;background:none"><i style="background:'+rcColor(n)+'"></i>'+rcEsc(n)+'</span></td>'+
+      '<td class="num">'+ds.length+'</td><td>'+(zt?rcZonasTxt(z):'–')+'</td><td>'+(reparto||'–')+'</td><td class="num">'+pq+'</td>'+
+      '<td class="num rc-money">'+rcMoney(fact)+'</td><td class="num">'+(ds.length?rcMoney(fact/ds.length):'–')+'</td><td class="num">'+(pq?rcMoney(fact/pq):'–')+'</td></tr>'});
+  document.getElementById('rc-mf-total').innerHTML='Total del per&iacute;odo: <strong class="rc-money">'+rcMoney(total)+'</strong>';
+  document.getElementById('rc-mf').innerHTML='<tr><th>Moto fija</th><th class="num">D&iacute;as</th><th>Zonas asignadas</th><th>Reparto</th><th class="num">Paquetes</th><th class="num">Facturaci&oacute;n</th><th class="num">Prom/d&iacute;a</th><th class="num">$ por paquete</th></tr>'+rows.join('');
 }
 function rcQuickOff(){document.querySelectorAll('#rc-quick .rc-btn').forEach(function(x){x.classList.remove('on')})}
 function rcEsc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -1885,11 +1921,11 @@ function rcToggle(i,on){var n=rc.names[i];rc.sel=on?rc.sel.concat([n]):rc.sel.fi
 function rcClear(){rc.sel=[];rc.det=null;renderRend()}
 function rcList(){
   var q=document.getElementById('rc-q').value.toLowerCase();
-  var rows=rc.names.map(function(n,i){var o=rc.drv[n];return {n:n,i:i,seg:o.seg,c:Object.keys(o.days).filter(rcIn).length}})
+  var rows=rc.names.map(function(n,i){var o=rc.drv[n];return {n:n,i:i,seg:o.seg,mf:o.mf,c:Object.keys(o.days).filter(rcIn).length}})
     .filter(function(r){return (!rc.seg||r.seg===rc.seg)&&r.n.toLowerCase().indexOf(q)>=0})
     .sort(function(a,b){return b.c-a.c||a.n.localeCompare(b.n)});
   document.getElementById('rc-list').innerHTML=rows.length?rows.map(function(r){
-    return '<label class="rc-drv"><input type="checkbox" onchange="rcToggle('+r.i+',this.checked)"'+(rc.sel.indexOf(r.n)>=0?' checked':'')+'><span class="n">'+rcEsc(r.n)+'</span><span class="rc-mut">'+r.c+' d&iacute;as</span>'+rcTag(r.seg)+'</label>'}).join('')
+    return '<label class="rc-drv"><input type="checkbox" onchange="rcToggle('+r.i+',this.checked)"'+(rc.sel.indexOf(r.n)>=0?' checked':'')+'><span class="n">'+rcEsc(r.n)+'</span><span class="rc-mut">'+r.c+' d&iacute;as</span>'+(r.mf?'<span class="tag tag-doble">Moto fija</span>':'')+rcTag(r.seg)+'</label>'}).join('')
     :'<div class="rc-empty" style="padding:16px">Sin coincidencias</div>';
   document.getElementById('rc-chips').innerHTML=rc.sel.length?rc.sel.map(function(n){
     return '<span class="rc-chip"><i style="background:'+rcColor(n)+'"></i>'+rcEsc(n)+'<b onclick="rcToggle('+rc.names.indexOf(n)+',false)">&#10005;</b></span>'}).join('')
@@ -1947,22 +1983,23 @@ function rcTable(){
         '<td class="num '+(a.hf>1260?'rc-r':'')+'">'+rcFromMin(a.hf)+'</td><td class="num">'+a.post+'</td><td class="num">'+a.inc+'</td>'+
         '<td class="num '+(a.dv==null?'':a.dv>60?'rc-r':a.dv>0?'rc-y':'rc-g')+'">'+(a.dv==null?'–':(a.dv>0?'+':'')+Math.round(a.dv)+' min')+'</td></tr>'}).join('');
 }
-function rcShowDet(i){var n=rc.names[i];rc.det=rc.det===n?null:n;rcTable();rcDetail();if(rc.det)document.getElementById('rc-det-card').scrollIntoView({behavior:'smooth',block:'nearest'})}
+function rcShowDet(i){var n=rc.names[i];rc.det=rc.det===n?null:n;rcTable();rcMotos();rcDetail();if(rc.det)document.getElementById('rc-det-card').scrollIntoView({behavior:'smooth',block:'nearest'})}
 function rcDetail(){
   var card=document.getElementById('rc-det-card');
   if(!rc.det){card.style.display='none';return}
   var o=rc.drv[rc.det],days=Object.keys(o.days).filter(rcIn).sort();
   card.style.display='';
-  document.getElementById('rc-det-title').innerHTML='<span>Detalle d&iacute;a por d&iacute;a &middot; '+rcEsc(rc.det)+'</span><a onclick="rc.det=null;rcTable();rcDetail()">Cerrar</a>';
-  document.getElementById('rc-det').innerHTML='<tr><th>Fecha</th><th class="num">Paquetes</th><th class="num">Entregados</th><th class="num">Eficiencia</th><th class="num">Secuencia</th><th class="num">Cierre</th><th class="num">Visitas post-21</th><th class="num">Ruta</th><th class="num">Desv&iacute;o</th></tr>'+
+  document.getElementById('rc-det-title').innerHTML='<span>Detalle d&iacute;a por d&iacute;a &middot; '+rcEsc(rc.det)+(o.mf?' &middot; moto fija':'')+'</span><a onclick="rc.det=null;rcTable();rcMotos();rcDetail()">Cerrar</a>';
+  document.getElementById('rc-det').innerHTML='<tr><th>Fecha</th><th class="num">Paquetes</th><th class="num">Entregados</th><th class="num">Eficiencia</th><th class="num">Secuencia</th><th class="num">Cierre</th><th class="num">Visitas post-21</th><th class="num">Ruta</th><th class="num">Desv&iacute;o</th>'+(o.mf?'<th>Zonas</th><th class="num">Facturaci&oacute;n</th>':'')+'</tr>'+
     days.map(function(d){var v=o.days[d];return '<tr><td>'+rcFmtD(d)+'</td><td class="num">'+v.pq+'</td><td class="num">'+v.en+'</td><td class="num '+rcCls(v.ef,'ef')+'">'+rcPct(v.ef)+'</td><td class="num '+rcCls(v.sq,'sq')+'">'+rcPct(v.sq)+'</td>'+
       '<td class="num '+(v.post?'rc-r':'')+'">'+(v.hf||'–')+'</td><td class="num">'+v.p21+'</td><td class="num">'+(v.rc===false?'<span class="rc-y">Incompleta</span>':'Completa')+'</td>'+
-      '<td class="num">'+(v.dv==null?'–':(v.dv>0?'+':'')+v.dv+' min')+'</td></tr>'}).join('');
+      '<td class="num">'+(v.dv==null?'–':(v.dv>0?'+':'')+v.dv+' min')+'</td>'+
+      (o.mf?'<td>'+(v.mf?rcZonasTxt(v.mf.z):'–')+'</td><td class="num rc-money">'+(v.mf?rcMoney(v.mf.fact):'–')+'</td>':'')+'</tr>'}).join('');
 }
 function renderRend(){
   if(!rc)rcInit();
   document.getElementById('rc-d1').value=rc.d1;document.getElementById('rc-d2').value=rc.d2;
-  rcList();rcKpis();rcChart();rcTable();rcDetail();
+  rcList();rcKpis();rcChart();rcTable();rcMotos();rcDetail();
 }
 init();
 </script>
