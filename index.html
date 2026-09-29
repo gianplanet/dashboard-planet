@@ -238,6 +238,26 @@ input.rc-in[type=text]{width:100%}
 #rc-chart svg text{fill:var(--text2);font-size:11px;font-family:inherit}
 .rc-empty{color:var(--text2);text-align:center;padding:40px}
 .rc-money{color:#f59e0b;font-weight:600}
+/* animaciones (mismas ideas que clientes-planet: lift al hover, panel que se despliega, flecha que rota) */
+.rc-kpis.pop .section{animation:cardPop .5s cubic-bezier(0.22,1,0.36,1) both}
+.rc-kpis .section{transition:border-color .2s,transform .2s,box-shadow .2s}
+.rc-kpis .section:hover,.rc-filters .section:hover{transform:translateY(-2px);box-shadow:var(--shadow-card-hover);border-color:var(--purple)}
+.rc-filters .section{transition:border-color .2s,transform .2s,box-shadow .2s}
+.rc-chip.new{animation:rcChipIn .25s cubic-bezier(0.22,1,0.36,1) both}
+@keyframes rcChipIn{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}
+.rc-drv{transition:background .12s}
+.rc-drv input{accent-color:var(--purple)}
+.rc-tbl tr.clk td{transition:background .12s}
+.rc-exp{display:inline-block;width:10px;margin-right:4px;color:var(--text2);transition:transform .2s;font-size:10px}
+.rc-tbl tr.sel .rc-exp{transform:rotate(90deg);color:var(--purple)}
+.rc-slide{animation:rcSlide .3s cubic-bezier(0.22,1,0.36,1) both}
+@keyframes rcSlide{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+#rc-chart path.rc-line{stroke-dasharray:var(--len);stroke-dashoffset:var(--len);animation:rcDraw .9s cubic-bezier(0.22,1,0.36,1) forwards}
+@keyframes rcDraw{to{stroke-dashoffset:0}}
+#rc-chart circle{opacity:0;animation:fadeIn .3s ease forwards;transition:r .15s}
+#rc-chart circle:hover{r:6}
+.rc-btn:active{transform:scale(.96)}
+@media(prefers-reduced-motion:reduce){.rc-kpis .section,.rc-chip,.rc-slide,#rc-chart path.rc-line,#rc-chart circle{animation:none!important;opacity:1;stroke-dashoffset:0}}
 .rc-zb{display:inline-block;background:var(--accent-dim);color:var(--accent);border-radius:4px;padding:1px 6px;font-size:11px;margin:1px 2px 1px 0;white-space:nowrap}
 @media(max-width:900px){.rc-filters{grid-template-columns:1fr}.rc-kpis{grid-template-columns:repeat(2,1fr)}}
 </style>
@@ -608,7 +628,7 @@ function switchView(view,btn){
   if(view==='colectas'){renderColectas()}
   if(view==='reporte'){renderReporte()}
   document.querySelector('.date-nav').style.visibility=view==='rendimiento'?'hidden':'';
-  if(view==='rendimiento'){renderRend()}
+  if(view==='rendimiento'){renderRend(true)}
 }
 
 // ── Colectas ──
@@ -1881,6 +1901,7 @@ function rcMotos(){
   var card=document.getElementById('rc-mf-card');
   var mfs=rc.sel.filter(function(n){return rc.drv[n].mf});
   if(!mfs.length){card.style.display='none';return}
+  if(card.style.display==='none')rcReplay(card,'rc-slide');
   card.style.display='';
   var total=0;
   var rows=mfs.map(function(n){
@@ -1890,7 +1911,7 @@ function rcMotos(){
     var zt=Object.keys(z).reduce(function(a,k){return a+z[k]},0);
     var reparto=Object.keys(z).sort(function(a,b){return a-b}).filter(function(k){return z[k]>0}).map(function(k){
       return '<span class="rc-zb"><b>Z'+k+'</b> '+Math.round(z[k]/zt*100)+'%</span>'}).join(' ');
-    return '<tr class="clk'+(rc.det===n?' sel':'')+'" onclick="rcShowDet('+rc.names.indexOf(n)+')"><td><span class="rc-chip" style="border:none;padding:0;background:none"><i style="background:'+rcColor(n)+'"></i>'+rcEsc(n)+'</span></td>'+
+    return '<tr class="clk'+(rc.det===n?' sel':'')+'" onclick="rcShowDet('+rc.names.indexOf(n)+')"><td><span class="rc-exp">&#9654;</span><span class="rc-chip" style="border:none;padding:0;background:none"><i style="background:'+rcColor(n)+'"></i>'+rcEsc(n)+'</span></td>'+
       '<td class="num">'+ds.length+'</td><td>'+(zt?rcZonasTxt(z):'–')+'</td><td>'+(reparto||'–')+'</td><td class="num">'+pq+'</td>'+
       '<td class="num rc-money">'+rcMoney(fact)+'</td><td class="num">'+(ds.length?rcMoney(fact/ds.length):'–')+'</td><td class="num">'+(pq?rcMoney(fact/pq):'–')+'</td></tr>'});
   document.getElementById('rc-mf-total').innerHTML='Total del per&iacute;odo: <strong class="rc-money">'+rcMoney(total)+'</strong>';
@@ -1917,8 +1938,20 @@ function rcAgg(ds){
     post:ds.filter(function(x){return x.post}).length,inc:ds.filter(function(x){return x.rc===false}).length,
     dv:dvs.length?dvs.reduce(function(a,x){return a+x.dv},0)/dvs.length:null};
 }
-function rcToggle(i,on){var n=rc.names[i];rc.sel=on?rc.sel.concat([n]):rc.sel.filter(function(x){return x!==n});if(rc.det===n&&!on)rc.det=null;renderRend()}
+function rcToggle(i,on){var n=rc.names[i];rc.lastAdded=on?n:null;rc.sel=on?rc.sel.concat([n]):rc.sel.filter(function(x){return x!==n});if(rc.det===n&&!on)rc.det=null;renderRend()}
 function rcClear(){rc.sel=[];rc.det=null;renderRend()}
+// Anima los números de los KPIs desde el valor anterior al nuevo
+function rcCountUp(){
+  rc.prevK=rc.prevK||{};
+  document.querySelectorAll('#rc-kpis [data-to]').forEach(function(el,idx){
+    var to=+el.dataset.to,pc=el.dataset.fmt==='pct',from=rc.prevK[idx]!=null?rc.prevK[idx]:0;rc.prevK[idx]=to;
+    var f=function(v){return pc?(v*100).toFixed(1)+'%':Math.round(v).toLocaleString('es-AR')};
+    if(from===to||window.matchMedia('(prefers-reduced-motion: reduce)').matches){el.textContent=f(to);return}
+    var t0=performance.now(),dur=700;
+    (function step(t){var p=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-p,3);el.textContent=f(from+(to-from)*e);if(p<1)requestAnimationFrame(step)})(t0);
+  });
+}
+function rcReplay(el,cls){el.classList.remove(cls);void el.offsetWidth;el.classList.add(cls)}
 function rcList(){
   var q=document.getElementById('rc-q').value.toLowerCase();
   var rows=rc.names.map(function(n,i){var o=rc.drv[n];return {n:n,i:i,seg:o.seg,mf:o.mf,c:Object.keys(o.days).filter(rcIn).length}})
@@ -1928,21 +1961,24 @@ function rcList(){
     return '<label class="rc-drv"><input type="checkbox" onchange="rcToggle('+r.i+',this.checked)"'+(rc.sel.indexOf(r.n)>=0?' checked':'')+'><span class="n">'+rcEsc(r.n)+'</span><span class="rc-mut">'+r.c+' d&iacute;as</span>'+(r.mf?'<span class="tag tag-doble">Moto fija</span>':'')+rcTag(r.seg)+'</label>'}).join('')
     :'<div class="rc-empty" style="padding:16px">Sin coincidencias</div>';
   document.getElementById('rc-chips').innerHTML=rc.sel.length?rc.sel.map(function(n){
-    return '<span class="rc-chip"><i style="background:'+rcColor(n)+'"></i>'+rcEsc(n)+'<b onclick="rcToggle('+rc.names.indexOf(n)+',false)">&#10005;</b></span>'}).join('')
+    return '<span class="rc-chip'+(n===rc.lastAdded?' new':'')+'"><i style="background:'+rcColor(n)+'"></i>'+rcEsc(n)+'<b onclick="rcToggle('+rc.names.indexOf(n)+',false)">&#10005;</b></span>'}).join('')
     :'<span class="rc-mut">Ning&uacute;n chofer elegido</span>';
 }
 function rcKpis(){
   var ds=[];rc.sel.forEach(function(n){ds=ds.concat(rcDays(n))});
   var a=rcAgg(ds),k;
   if(!a)k=[['Jornadas'],['Paquetes'],['Eficiencia'],['Secuencia'],['Cierres post-21'],['Visitas post-21']];
-  else k=[
-    ['Jornadas',a.dias,rc.sel.length+' chofer'+(rc.sel.length===1?'':'es')],
-    ['Paquetes',a.pq.toLocaleString('es-AR'),a.en.toLocaleString('es-AR')+' entregados'],
-    ['Eficiencia','<span class="'+rcCls(a.ef,'ef')+'">'+rcPct(a.ef)+'</span>','entregados / asignados'],
-    ['Secuencia','<span class="'+rcCls(a.sq,'sq')+'">'+rcPct(a.sq)+'</span>','promedio del per&iacute;odo'],
-    ['Cierres post-21','<span class="'+(a.post/a.dias>0.3?'rc-r':'')+'">'+a.post+'</span>',Math.round(a.post/a.dias*100)+'% de las jornadas'],
-    ['Visitas post-21',a.p21,'paradas despu&eacute;s de hora']];
-  document.getElementById('rc-kpis').innerHTML=k.map(function(x){return '<div class="section"><div class="rc-lbl">'+x[0]+'</div><div class="rc-kv">'+(x[1]!=null?x[1]:'–')+'</div><div class="rc-kh">'+(x[2]||'&nbsp;')+'</div></div>'}).join('');
+  else{
+    var cnt=function(v,c,pc){return v==null?'–':'<span class="'+(c||'')+'" data-to="'+v+'"'+(pc?' data-fmt="pct"':'')+'></span>'};
+    k=[
+    ['Jornadas',cnt(a.dias),rc.sel.length+' chofer'+(rc.sel.length===1?'':'es')],
+    ['Paquetes',cnt(a.pq),a.en.toLocaleString('es-AR')+' entregados'],
+    ['Eficiencia',cnt(a.ef,rcCls(a.ef,'ef'),1),'entregados / asignados'],
+    ['Secuencia',cnt(a.sq,rcCls(a.sq,'sq'),1),'promedio del per&iacute;odo'],
+    ['Cierres post-21',cnt(a.post,a.post/a.dias>0.3?'rc-r':''),Math.round(a.post/a.dias*100)+'% de las jornadas'],
+    ['Visitas post-21',cnt(a.p21),'paradas despu&eacute;s de hora']]}
+  document.getElementById('rc-kpis').innerHTML=k.map(function(x,i){return '<div class="section" style="animation-delay:'+(i*0.05)+'s"><div class="rc-lbl">'+x[0]+'</div><div class="rc-kv">'+(x[1]!=null?x[1]:'–')+'</div><div class="rc-kh">'+(x[2]||'&nbsp;')+'</div></div>'}).join('');
+  if(!a)rc.prevK={};else rcCountUp();
 }
 function rcChart(){
   var el=document.getElementById('rc-chart');
@@ -1967,16 +2003,17 @@ function rcChart(){
     var c=rcColor(n),path='',pen=false,dots='';
     days.forEach(function(d,i){var v=val(rc.drv[n].days[d]);if(v==null){pen=false;return}
       path+=(pen?'L':'M')+x(i)+' '+y(v)+' ';pen=true;
-      dots+='<circle cx="'+x(i)+'" cy="'+y(v)+'" r="3.5" fill="'+c+'"><title>'+rcEsc(n)+' · '+rcFmtD(d)+': '+fmt(v)+'</title></circle>'});
-    s+='<path d="'+path+'" fill="none" stroke="'+c+'" stroke-width="2"/>'+dots});
+      dots+='<circle cx="'+x(i)+'" cy="'+y(v)+'" r="3.5" fill="'+c+'" style="animation-delay:'+(0.1+0.7*i/Math.max(1,days.length-1)).toFixed(2)+'s"><title>'+rcEsc(n)+' · '+rcFmtD(d)+': '+fmt(v)+'</title></circle>'});
+    s+='<path class="rc-line" d="'+path+'" fill="none" stroke="'+c+'" stroke-width="2"/>'+dots});
   el.innerHTML=s+'</svg>';
+  el.querySelectorAll('path.rc-line').forEach(function(p){p.style.setProperty('--len',Math.ceil(p.getTotalLength())+1)});
 }
 function rcTable(){
   var t=document.getElementById('rc-tbl');
   if(!rc.sel.length){t.innerHTML='<tr><td class="rc-empty">Sin choferes elegidos</td></tr>';return}
   t.innerHTML='<tr><th>Chofer</th><th class="num">D&iacute;as</th><th class="num">Paquetes</th><th class="num">Prom/d&iacute;a</th><th class="num">Eficiencia</th><th class="num">Secuencia</th><th class="num">Cierre prom.</th><th class="num">D&iacute;as post-21</th><th class="num">Rutas incompletas</th><th class="num">Desv&iacute;o prom.</th></tr>'+
     rc.sel.map(function(n){var a=rcAgg(rcDays(n)),i=rc.names.indexOf(n);
-      var nm='<span class="rc-chip" style="border:none;padding:0;background:none"><i style="background:'+rcColor(n)+'"></i>'+rcEsc(n)+' '+rcTag(rc.drv[n].seg)+'</span>';
+      var nm='<span class="rc-exp">&#9654;</span><span class="rc-chip" style="border:none;padding:0;background:none"><i style="background:'+rcColor(n)+'"></i>'+rcEsc(n)+' '+rcTag(rc.drv[n].seg)+'</span>';
       if(!a)return '<tr><td>'+nm+'</td><td colspan="9" class="rc-mut">No trabaj&oacute; en el rango elegido</td></tr>';
       return '<tr class="clk'+(rc.det===n?' sel':'')+'" onclick="rcShowDet('+i+')"><td>'+nm+'</td><td class="num">'+a.dias+'</td><td class="num">'+a.pq+'</td><td class="num">'+(a.pq/a.dias).toFixed(1)+'</td>'+
         '<td class="num '+rcCls(a.ef,'ef')+'">'+rcPct(a.ef)+'</td><td class="num '+rcCls(a.sq,'sq')+'">'+rcPct(a.sq)+'</td>'+
@@ -1986,18 +2023,20 @@ function rcTable(){
 function rcShowDet(i){var n=rc.names[i];rc.det=rc.det===n?null:n;rcTable();rcMotos();rcDetail();if(rc.det)document.getElementById('rc-det-card').scrollIntoView({behavior:'smooth',block:'nearest'})}
 function rcDetail(){
   var card=document.getElementById('rc-det-card');
-  if(!rc.det){card.style.display='none';return}
+  if(!rc.det){card.style.display='none';rc.detShown=null;return}
   var o=rc.drv[rc.det],days=Object.keys(o.days).filter(rcIn).sort();
   card.style.display='';
+  if(rc.detShown!==rc.det){rc.detShown=rc.det;rcReplay(card,'rc-slide')}
   document.getElementById('rc-det-title').innerHTML='<span>Detalle d&iacute;a por d&iacute;a &middot; '+rcEsc(rc.det)+(o.mf?' &middot; moto fija':'')+'</span><a onclick="rc.det=null;rcTable();rcMotos();rcDetail()">Cerrar</a>';
   document.getElementById('rc-det').innerHTML='<tr><th>Fecha</th><th class="num">Paquetes</th><th class="num">Entregados</th><th class="num">Eficiencia</th><th class="num">Secuencia</th><th class="num">Cierre</th><th class="num">Visitas post-21</th><th class="num">Ruta</th><th class="num">Desv&iacute;o</th>'+(o.mf?'<th>Zonas</th><th class="num">Facturaci&oacute;n</th>':'')+'</tr>'+
-    days.map(function(d){var v=o.days[d];return '<tr><td>'+rcFmtD(d)+'</td><td class="num">'+v.pq+'</td><td class="num">'+v.en+'</td><td class="num '+rcCls(v.ef,'ef')+'">'+rcPct(v.ef)+'</td><td class="num '+rcCls(v.sq,'sq')+'">'+rcPct(v.sq)+'</td>'+
+    days.map(function(d,i){var v=o.days[d];return '<tr style="animation-delay:'+Math.min(i*0.025,0.5).toFixed(3)+'s"><td>'+rcFmtD(d)+'</td><td class="num">'+v.pq+'</td><td class="num">'+v.en+'</td><td class="num '+rcCls(v.ef,'ef')+'">'+rcPct(v.ef)+'</td><td class="num '+rcCls(v.sq,'sq')+'">'+rcPct(v.sq)+'</td>'+
       '<td class="num '+(v.post?'rc-r':'')+'">'+(v.hf||'–')+'</td><td class="num">'+v.p21+'</td><td class="num">'+(v.rc===false?'<span class="rc-y">Incompleta</span>':'Completa')+'</td>'+
       '<td class="num">'+(v.dv==null?'–':(v.dv>0?'+':'')+v.dv+' min')+'</td>'+
       (o.mf?'<td>'+(v.mf?rcZonasTxt(v.mf.z):'–')+'</td><td class="num rc-money">'+(v.mf?rcMoney(v.mf.fact):'–')+'</td>':'')+'</tr>'}).join('');
 }
-function renderRend(){
+function renderRend(entrada){
   if(!rc)rcInit();
+  document.getElementById('rc-kpis').classList.toggle('pop',!!entrada);
   document.getElementById('rc-d1').value=rc.d1;document.getElementById('rc-d2').value=rc.d2;
   rcList();rcKpis();rcChart();rcTable();rcMotos();rcDetail();
 }
